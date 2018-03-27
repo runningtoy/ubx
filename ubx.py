@@ -2,6 +2,7 @@
 """
 Open GPS Daemon - UBX parser class
 
+(C) 2016 Berkeley Applied Analytics <john.kua@berkeleyappliedanalytics.com>
 (C) 2010 Timo Juhani Lindfors <timo.lindfors@iki.fi>
 (C) 2008 Daniel Willmann <daniel@totalueberwachung.de>
 (C) 2008 Openmoko, Inc.
@@ -10,7 +11,7 @@ GPLv2
 import struct
 import calendar
 import os
-#import gobject
+import gobject
 import logging
 import sys
 import socket
@@ -45,6 +46,7 @@ CLIDPAIR = {
     "CFG-DAT" : (0x06, 0x06),
     "CFG-EKF" : (0x06, 0x12),
     "CFG-FXN" : (0x06, 0x0e),
+    "CFG-GNSS" : (0x06, 0x3e),
     "CFG-INF" : (0x06, 0x02),
     "CFG-LIC" : (0x06, 0x80),
     "CFG-MSG" : (0x06, 0x01),
@@ -108,6 +110,26 @@ CLIDPAIR = {
 }
 
 CLIDPAIR_INV = dict( [ [v,k] for k,v in CLIDPAIR.items() ] )
+
+# MSGFMT - Describes the format of each message. 
+# The key tuple contains the name of the message and the size in bytes. 
+# If the size is None, than than this is a variable length message.
+#
+# The value of each dictionary item is in one of two formats. Both are lists.
+#
+# In the first format, the first element of the list is a string describing the
+# struct format (see the Python struct documentation). The second element is a
+# list of strings with field names for each of the elements of the struct.
+#
+# The second format is used if there is a header section followed by repeated
+# sections. In this format, the first element is the number of bytes for the 
+# header section, followed by the struct format, then the field names. 
+#
+# The fourth element is where the description of the repeated section starts. As 
+# with the header section, this begins with the number of bytes for each 
+# section. It is not the sum of the section sizes. So if each repeated section 
+# is 12 bytes, this value is 12. Finally, the last (sixth) element is the list
+# of field names.
 
 MSGFMT = {
     ("NAV-POSECEF", 20) :
@@ -178,6 +200,8 @@ MSGFMT = {
         ["<BB", ["ClsID", "MsgID"]],
     ("ACK-NACK", 2) :
         ["<BB", ["ClsID", "MsgID"]],
+    ("CFG-GNSS", None) :
+        [4, "<BBBB", ['msgVer', 'numTrkChHw', 'numTrkChUse', 'numConfigBlocks'], 8, "<BBBBL", ['gnssId', 'resTrkCh', 'maxTrkCh', 'reserved1', 'flags']],
     ("CFG-PRT", 1) :
         ["<B", ["PortID"]],
     ("CFG-PRT", None) :
@@ -185,15 +209,15 @@ MSGFMT = {
     ("CFG-USB", 108) :
         ["<HHxxHHH32s32s32s", ["VendorID", "ProductID", "reserved2", "PowerConsumption", "Flags", "VendorString", "ProductString", "SerialNumber"]],
     ("CFG-MSG", 2) :
-        ["<BB", ["Class", "MsgID"]],
-    ("CFG-MSG", 3) :
-        ["<BBB", ["Class", "MsgID", "Rate"]],
+        ["<BB", ["msgClass", "msgId"]],
+    ("CFG-MSG", None) :
+        [2, "<BB", ["msgClass", "msgId"], 1, "B", ['rate']],
     ("CFG-NMEA", 4) :
         ["<BBBB", ["Filter", "Version", "NumSV", "Flags"]],
     ("CFG-RATE", 6) :
         ["<HHH", ["Meas", "Nav", "Time"]],
     ("CFG-CFG", 12) :
-        ["<III", ["Clear_mask", "Save_mask", "Load_mask"]],
+        ["<III", ["clearMask", "saveMask", "loadMask"]],
     ("CFG-TP", 20) :
         ["<IIbBxxhhi", ["interval", "length", "status", "time_ref", "antenna_cable_delay", "RF_group_delay", "user_delay"]],
     ("CFG-NAV2", 40) :
@@ -204,7 +228,7 @@ MSGFMT = {
     ("CFG-INF", 1) :
         ["<B", ["ProtocolID"]],
     ("CFG-INF", None) :
-        [0, "", [], 8, "<BxxxBBBB", ["ProtocolID", "INFMSG_mask0", "INFMSG_mask1", "INFMSG_mask2", "INFMSG_mask3"]],
+        [0, "", [], 10, "<BxxxBBBBBB", ["ProtocolID", "INFMSG_mask0", "INFMSG_mask1", "INFMSG_mask2", "INFMSG_mask3", "INFMSG_mask4", "INFMSG_mask5"]],
     ("CFG-RST", 4) :
         ["<HBx", ["nav_bbr", "Reset"]],
     ("CFG-RXM", 2) :
@@ -273,10 +297,68 @@ MSGFMT = {
 
 MSGFMT_INV = dict( [ [(CLIDPAIR[clid], le),v + [clid]] for (clid, le),v in MSGFMT.items() ] )
 
+GNSSID = {'GPS': 0,
+          'SBAS': 1,
+          'Galileo': 2,
+          'BeiDou': 3,
+          'IMES': 4,
+          'QZSS': 5,
+          'GLONASS': 6,
+         }
+
+GNSSID_INV = dict( [(v,k) for k, v in GNSSID.iteritems()] )
+
+clearMaskShiftDict = {'ioPort':   0,
+             'msgConf':  1,
+             'infMsg':   2,
+             'navConf':  3,
+             'rxmConf':  4,
+             'rinvConf': 9,
+             'antConf':  10,
+             'logConf':  11,
+             # 'ftsConf':  12
+            }
+
+navBbrMaskShiftDict = {'eph':    0,
+                       'alm':    1,
+                       'health': 2,
+                       'klob':   3,
+                       'pos':    4,
+                       'clkd':   5,
+                       'osc':    6,
+                       'utc':    7,
+                       'rtc':    8,
+                       'aop':    15,
+                      }
+
+resetModeDict = {'hw': 0, 
+                 'sw': 1,
+                 'swGnssOnly': 2,
+                 'hwAfterShutdown': 4, 
+                 'gnssStop': 8,
+                 'gnssStart': 9
+                }
+
+def buildMask(enabledBits, shiftDict):
+    if enabledBits is None or enabledBits == ['none']:
+        return 0
+    
+    if 'all' in enabledBits:
+        enabledBits = shiftDict.keys()
+
+    mask = 0
+    for bit in enabledBits:
+        if bit not in shiftDict:
+            raise Exception('{} is not a valid bit! Must be one of: {}'.format(bit, shiftDict.keys()))
+        mask |= (1 << shiftDict[bit])
+
+    return mask
+
 class Parser():
-    def __init__(self, callback, rawCallback=None, device="/dev/ttySAC1"):
+    def __init__(self, callback, rawCallback=None, device="/dev/ttyO5"):
         self.callback = callback
         self.rawCallback = rawCallback
+        self.device = device
         if device:
             os.system("stty -F %s raw" % device)
             self.fd = os.open(device, os.O_NONBLOCK | os.O_RDWR)

@@ -21,7 +21,7 @@
 # THE SOFTWARE.
 
 
-# Set baudrate
+# Enable or disable the use of NMEA.
 
 import ubx
 import struct
@@ -37,24 +37,9 @@ loop = gobject.MainLoop()
 
 def callback(ty, packet):
     print("callback %s" % repr([ty, packet]))
-    if ty == "CFG-PRT":
-        packet[1]["Baudrate"] = args.baudrate
-        t.send("CFG-PRT", 20, packet)
-    elif ty == "ACK-ACK":
-        os.system("stty -F {} {}".format(t.device, args.baudrate))
-        loop.quit()
+    loop.quit()
     return True
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('baudrate', type=int, choices=[9600, 115200], help='Specify the baudrate. Must be 9600 or 115200')
-    parser.add_argument('--device', '-d', help='Specify the serial port device to communicate with. e.g. /dev/ttyO5')
-    args = parser.parse_args()
-
-    if args.device is not None:
-        t = ubx.Parser(callback, device=args.device)
-    else:
-        t = ubx.Parser(callback)
-    t.send("CFG-PRT", 0, [])
-    loop.run()
+t = ubx.Parser(callback)
+t.send("MON-VER", 0, [])
+loop.run()

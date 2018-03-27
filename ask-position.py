@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# Copyright (C) 2016 Berkeley Applied Analytics <john.kua@berkeleyappliedanalytics.com>
 # Copyright (C) 2010 Timo Juhani Lindfors <timo.lindfors@iki.fi>
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28,12 +29,19 @@ import logging
 import sys
 import socket
 import time
+import signal
 
 d = {}
 start = time.time()
 TIMEOUT = 20
 loop = gobject.MainLoop()
 state = 0
+
+def signal_handler(signal, frame):
+    loop.quit()
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
 
 def timeout(*args):
     print("timeout")
@@ -76,7 +84,16 @@ def callback(ty, *args):
         loop.quit()
 
 if __name__ == "__main__":
-    t = ubx.Parser(callback)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--device', '-d', help='Specify the serial port device to communicate with. e.g. /dev/ttyO5')
+    args = parser.parse_args()
+
+    if args.device is not None:
+        t = ubx.Parser(callback, device=args.device)
+    else:
+        t = ubx.Parser(callback)
+    print('Polling NAV-STATUS... press CTRL-C to stop')
     poll_nav_status()
-    gobject.timeout_add(TIMEOUT * 1000, timeout)
+    # gobject.timeout_add(TIMEOUT * 1000, timeout)
     loop.run()

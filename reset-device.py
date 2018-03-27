@@ -21,7 +21,7 @@
 # THE SOFTWARE.
 
 
-# Set baudrate
+# Enable or disable the use of NMEA.
 
 import ubx
 import struct
@@ -33,28 +33,35 @@ import sys
 import socket
 import time
 
-loop = gobject.MainLoop()
+def callback():
+    pass
 
-def callback(ty, packet):
-    print("callback %s" % repr([ty, packet]))
-    if ty == "CFG-PRT":
-        packet[1]["Baudrate"] = args.baudrate
-        t.send("CFG-PRT", 20, packet)
-    elif ty == "ACK-ACK":
-        os.system("stty -F {} {}".format(t.device, args.baudrate))
-        loop.quit()
-    return True
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('baudrate', type=int, choices=[9600, 115200], help='Specify the baudrate. Must be 9600 or 115200')
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--startType', choices=['hot', 'warm', 'cold'], default='cold', help='Specify the start type. This controls what data is cleared. Use the \'clear\' option to specify individual sections to clear.')
+    parser.add_argument('--clear', '-c', choices=ubx.navBbrMaskShiftDict.keys() + ['all', 'none'], nargs='+', default=None, help='Specify the data structures to clear. This overrides \'startType\'.')
+    parser.add_argument('--mode', '-m', choices=ubx.resetModeDict.keys(), default='hw', help='Specify the restart mode.\nsw: Controlled software reset\nswGnssOnly: Controlled software reset (GNSS Only)\nhw: Hardware reset (Watchdog) immediately\nhwShutdown: Hardware reset (Watchdog) after shutdown\ngnssStop: Controlled GNSS stop\ngnssStart: Controlled GNSS start')
     parser.add_argument('--device', '-d', help='Specify the serial port device to communicate with. e.g. /dev/ttyO5')
     args = parser.parse_args()
-
+    
     if args.device is not None:
         t = ubx.Parser(callback, device=args.device)
     else:
         t = ubx.Parser(callback)
-    t.send("CFG-PRT", 0, [])
-    loop.run()
+
+    if args.clear is None:
+        if args.startType == 'hot':
+            navBbrMask = 0
+        elif args.startType == 'warm':
+            navBbrMask = 1
+        elif args.startType == 'cold':
+            navBbrMask = 0xff
+    else:
+        navBbrMask = ubx.buildMask(args.clear, ubx.navBbrMaskShiftDict)
+
+    resetMode = ubx.resetModeDict[args.mode]
+
+    print('Sending restart command... this will not be ACKed.')
+    t.send("CFG-RST", 4, {'nav_bbr': navBbrMask, 'Reset': resetMode})
+

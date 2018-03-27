@@ -21,7 +21,7 @@
 # THE SOFTWARE.
 
 
-# Set baudrate
+# Enable or disable the use of NMEA.
 
 import ubx
 import struct
@@ -37,24 +37,38 @@ loop = gobject.MainLoop()
 
 def callback(ty, packet):
     print("callback %s" % repr([ty, packet]))
-    if ty == "CFG-PRT":
-        packet[1]["Baudrate"] = args.baudrate
-        t.send("CFG-PRT", 20, packet)
+    if ty == "CFG-INF":
+        pass
+        # if sys.argv[1] == "on":
+        #     # NMEA
+        #     packet[1]["In_proto_mask"] = 1
+        #     packet[1]["Out_proto_mask"] = 2
+        # else:
+        #     # only UBX
+        #     packet[1]["In_proto_mask"] = 1
+        #     packet[1]["Out_proto_mask"] = 1
+        # t.send("CFG-PRT", 20, packet)
     elif ty == "ACK-ACK":
-        os.system("stty -F {} {}".format(t.device, args.baudrate))
         loop.quit()
     return True
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('baudrate', type=int, choices=[9600, 115200], help='Specify the baudrate. Must be 9600 or 115200')
+    parser.add_argument('protocol', choices=['ubx', 'nmea'], help='Specify the protocol to get the configuration for.')
     parser.add_argument('--device', '-d', help='Specify the serial port device to communicate with. e.g. /dev/ttyO5')
     args = parser.parse_args()
-
+    
     if args.device is not None:
         t = ubx.Parser(callback, device=args.device)
     else:
         t = ubx.Parser(callback)
-    t.send("CFG-PRT", 0, [])
+
+    if sys.argv[1] == 'ubx':
+        t.send("CFG-INF", 1, {'ProtocolID': 0})
+    elif sys.argv[1] == 'nmea':
+        t.send("CFG-INF", 1, {'ProtocolID': 1})
+    else:
+        print 'Protocol must be \'ubx\' or \'nmea\''
     loop.run()
+

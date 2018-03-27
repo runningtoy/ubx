@@ -21,7 +21,7 @@
 # THE SOFTWARE.
 
 
-# Set baudrate
+# Enable or disable the use of NMEA.
 
 import ubx
 import struct
@@ -32,23 +32,24 @@ import logging
 import sys
 import socket
 import time
+from ubx import clearMaskShiftDict, buildMask
 
 loop = gobject.MainLoop()
 
 def callback(ty, packet):
     print("callback %s" % repr([ty, packet]))
-    if ty == "CFG-PRT":
-        packet[1]["Baudrate"] = args.baudrate
-        t.send("CFG-PRT", 20, packet)
-    elif ty == "ACK-ACK":
-        os.system("stty -F {} {}".format(t.device, args.baudrate))
+    if ty == "ACK-ACK":
+        print('Settings loaded successfully!')
+        loop.quit()
+    elif ty == "ACK-NACK":
+        print('Failed to load settings!')
         loop.quit()
     return True
 
-if __name__ == '__main__':
+if __name__=='__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('baudrate', type=int, choices=[9600, 115200], help='Specify the baudrate. Must be 9600 or 115200')
+    parser.add_argument('settings', nargs='+', choices=(clearMaskShiftDict.keys() + ['all', 'none']), help='Specify the settings to be reset to default. \'all\' will reset all settings and \'none\' will save none.')
     parser.add_argument('--device', '-d', help='Specify the serial port device to communicate with. e.g. /dev/ttyO5')
     args = parser.parse_args()
 
@@ -56,5 +57,8 @@ if __name__ == '__main__':
         t = ubx.Parser(callback, device=args.device)
     else:
         t = ubx.Parser(callback)
-    t.send("CFG-PRT", 0, [])
+    loadMask = buildMask(args.settings, clearMaskShiftDict)
+
+    print('Loading from saved configuration...')
+    t.send("CFG-CFG", 12, {'clearMask': 0, 'saveMask': 0, 'loadMask': loadMask})
     loop.run()
