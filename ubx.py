@@ -60,6 +60,7 @@ CLIDPAIR = {
     "CFG-TM" : (0x06, 0x10),
     "CFG-TM2" : (0x06, 0x19),
     "CFG-TMODE" : (0x06, 0x1d),
+    "CFG-TMODE3" : (0x06, 0x71),
     "CFG-TP" : (0x06, 0x07),
     "CFG-USB" : (0x06, 0x1b),
     "INF-DEBUG" : (0x04, 0x04),
@@ -89,6 +90,7 @@ CLIDPAIR = {
     "NAV-SOL" : (0x01, 0x06),
     "NAV-STATUS" : (0x01, 0x03),
     "NAV-SVINFO" : (0x01, 0x30),
+    "NAV-SVIN" : (0x01, 0x3b),
     "NAV-TIMEGPS" : (0x01, 0x20),
     "NAV-TIMEUTC" : (0x01, 0x21),
     "NAV-VELECEF" : (0x01, 0x11),
@@ -157,6 +159,8 @@ MSGFMT = {
         ["<IiiII", ["ITOW", "CLKB", "CLKD", "TAcc", "FAcc"]],
     ("NAV-SVINFO", None) :
         [8, "<IBxxx", ["ITOW", "NCH"], 12, "<BBBbBbhi", ["chn", "SVID", "Flags", "QI", "CNO", "Elev", "Azim", "PRRes"]],
+    ("NAV-SVIN",40) :
+        ["<BBBBLLlllbbbBLLBBBB",["version" ,"reserved1" ,"reserved1_1" ,"reserved1_2" ,"iTOW" ,"dur" ,"meanX" ,"meanY" ,"meanZ" ,"meanXHP" ,"meanYHP" ,"meanZHP" ,"reserved2" ,"meanAcc" ,"obs" ,"valid" ,"active" ,"reserved3" ,"reserved3_2"]],
     ("NAV-DGPS", None) :
         [16, "<IihhBBxx", ["ITOW", "AGE", "BASEID", "BASEHLTH", "NCH", "STATUS"], 12, "<BBHff", ["SVID", "Flags", "AGECH", "PRC", "PRRC"]],
     ("NAV-SBAS", None) :
@@ -249,6 +253,8 @@ MSGFMT = {
         ["<BxxxII", ["CH", "RATE", "FLAGS"]],
     ("CFG-TMODE", 28) :
         ["<IiiiIII", ["TimeMode", "FixedPosX", "FixedPosY", "FixedPosZ", "FixedPosVar", "SvinMinDur", "SvinVarLimit"]],
+    ("CFG-TMODE3",40) :
+        ["<BBHiiibbbBIIIHHHH", ["version","reserved1","flags", "ecefXOrLat", "ecefYOrLon", "ecefZOrAlt", "ecefXOrLatHP","ecefYOrLonHP", "ecefZOrAlHP","reserved2" ,"fixedPosAcc", "svinMinDur", "svinAccLimit","reserved3_1","reserved3_2","reserved3_3","reserved3_4"]],
 # CFG EKF - Dead Reckoning
 # UPD - Lowlevel memory manipulation
     ("UPD-UPLOAD", 12 + 16) :
@@ -355,7 +361,7 @@ def buildMask(enabledBits, shiftDict):
     return mask
 
 class Parser():
-    def __init__(self, callback, rawCallback=None, device="/dev/ttyO5"):
+    def __init__(self, callback, rawCallback=None, device="/dev/ttyACM0"):
         self.callback = callback
         self.rawCallback = rawCallback
         self.device = device
